@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Management</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        h1, h2 {
+            text-align: center;
+            color: #333;
+        }
+
+        form {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        input, select, button {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: calc(100% - 22px);
+            font-size: 16px;
+        }
+
+        button {
+            cursor: pointer;
+            border: none;
+            color: #fff;
+            background-color: #007bff;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .city-list {
+            margin-top: 20px;
+        }
+
+        .city-item {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin-bottom: 15px;
+            position: relative;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .city-item button {
+            margin-top: 10px;
+        }
+
+        .city-item button.edit-button {
+            background-color: #ffc107;
+            margin-right: 10px;
+        }
+
+        .city-item button.delete-button {
+            background-color: #dc3545;
+        }
+
+        .edit-form {
+            display: none;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .edit-form h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .city-item.editing ~ .edit-form {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>City Management</h1>
+
+    <!-- Add City Form -->
+    <h2>Add City</h2>
+    <form id="addCityForm">
+        <input type="text" id="addName" placeholder="City Name" required>
+        <input type="number" id="addPopulation" placeholder="Population" required>
+        <input type="text" id="addCountry" placeholder="Country" required>
+        <input type="text" id="addLatitude" placeholder="Latitude" required>
+        <input type="text" id="addLongitude" placeholder="Longitude" required>
+        <button type="submit">Add City</button>
+    </form>
+
+    <!-- Filter & Search -->
+    <h2>Filter & Search Cities</h2>
+    <form id="filterForm">
+        <input type="text" id="filterCountry" placeholder="Filter by Country">
+        <input type="text" id="searchName" placeholder="Search by Name">
+        <select id="sortOrder">
+            <option value="">Sort By</option>
+            <option value="name:asc">Name Ascending</option>
+            <option value="name:desc">Name Descending</option>
+            <option value="population:asc">Population Ascending</option>
+            <option value="population:desc">Population Descending</option>
+        </select>
+        <button type="submit">Apply</button>
+    </form>
+
+    <!-- Update City Form -->
+    <div id="updateCitySection" class="edit-form">
+        <h2>Update City</h2>
+        <form id="updateCityForm">
+            <input type="text" id="updateName" placeholder="City Name" required>
+            <input type="number" id="updatePopulation" placeholder="Population">
+            <input type="text" id="updateCountry" placeholder="Country">
+            <input type="text" id="updateLatitude" placeholder="Latitude">
+            <input type="text" id="updateLongitude" placeholder="Longitude">
+            <button type="submit">Update City</button>
+            <button type="button" id="cancelEditButton">Cancel</button>
+        </form>
+    </div>
+
+    <!-- City List -->
+    <div class="city-list" id="cityList"></div>
+
+    <script>
+        const apiUrl = 'http://localhost:3000/cities';
+
+        function fetchCities() {
+            const filter = document.getElementById('filterCountry').value;
+            const search = document.getElementById('searchName').value;
+            const sort = document.getElementById('sortOrder').value;
+
+            fetch(`${apiUrl}?filter=${encodeURIComponent(filter)}&search=${encodeURIComponent(search)}&sort=${encodeURIComponent(sort)}`)
+                .then(response => response.json())
+                .then(data => {
+                    const cityList = document.getElementById('cityList');
+                    cityList.innerHTML = '';
+                    data.forEach(city => {
+                        const cityItem = document.createElement('div');
+                        cityItem.classList.add('city-item');
+                        cityItem.setAttribute('data-city-name', city.name);
+                        cityItem.innerHTML = `
+                            <strong>${city.name}</strong>
+                            <p>Population: ${city.population}</p>
+                            <p>Country: ${city.country}</p>
+                            <p>Latitude: ${city.latitude}</p>
+                            <p>Longitude: ${city.longitude}</p>
+                            <button class="edit-button" onclick="startEdit('${city.name}', ${city.population}, '${city.country}', '${city.latitude}', '${city.longitude}')">Edit</button>
+                            <button class="delete-button" onclick="deleteCity('${city.name}')">Delete</button>
+                        `;
+                        cityList.appendChild(cityItem);
+                    });
+                })
+                .catch(error => console.error('Error fetching cities:', error));
+        }
+
+        function startEdit(name, population, country, latitude, longitude) {
+            document.getElementById('updateName').value = name;
+            document.getElementById('updatePopulation').value = population;
+            document.getElementById('updateCountry').value = country;
+            document.getElementById('updateLatitude').value = latitude;
+            document.getElementById('updateLongitude').value = longitude;
+            document.getElementById('updateCitySection').style.display = 'block';
+            document.querySelectorAll('.city-item').forEach(item => item.classList.remove('editing'));
+            document.querySelector(`.city-item[data-city-name="${name}"]`).classList.add('editing');
+        }
+
+        function deleteCity(name) {
+            fetch(`${apiUrl}/${name}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    fetchCities();
+                })
+                .catch(error => console.error('Error deleting city:', error));
+        }
+
+        document.getElementById('addCityForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+            const name = document.getElementById('addName').value;
+            const population = document.getElementById('addPopulation').value;
+            const country = document.getElementById('addCountry').value;
+            const latitude = document.getElementById('addLatitude').value;
+            const longitude = document.getElementById('addLongitude').value;
+
+            fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, population, country, latitude, longitude })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    fetchCities();
+                    document.getElementById('addCityForm').reset();
+                })
+                .catch(error => console.error('Error adding city:', error));
+        });
+
+        document.getElementById('updateCityForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+            const name = encodeURIComponent(document.getElementById('updateName').value);
+            const population = document.getElementById('updatePopulation').value;
+            const country = document.getElementById('updateCountry').value;
+            const latitude = document.getElementById('updateLatitude').value;
+            const longitude = document.getElementById('updateLongitude').value;
+
+            fetch(`${apiUrl}/${name}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ population, country, latitude, longitude })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    fetchCities();
+                    document.getElementById('updateCitySection').style.display = 'none';
+                })
+                .catch(error => console.error('Error updating city:', error));
+        });
+
+        document.getElementById('cancelEditButton').addEventListener('click', function () {
+            document.getElementById('updateCitySection').style.display = 'none';
+        });
+
+        document.getElementById('filterForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+            fetchCities();
+        });
+
+        fetchCities();
+    </script>
+</body>
+</html>
