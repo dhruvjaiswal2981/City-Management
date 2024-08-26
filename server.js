@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const mysql = require('mysql2');
+const sqlite3 = require('sqlite3').verbose(); // Import SQLite3
 const path = require('path'); // Import path module for serving static files
 
 const app = express();
@@ -8,22 +8,27 @@ const port = 3000;
 
 // Middleware
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public'))); // Serve static files from 'public' directory
+app.use(express.static(path.join(__dirname, 'public'))); // Serve static files from 'public' folder
 
-// MySQL connection
-const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: 'Dhruv@2981',
-  database: 'city_management'
+// SQLite connection
+const db = new sqlite3.Database('./city_management.db', (err) => {
+  if (err) {
+    console.error('Error opening SQLite database:', err.message);
+  } else {
+    console.log('Connected to SQLite database.');
+  }
 });
 
-db.connect(err => {
-  if (err) {
-    console.error('Error connecting to MySQL:', err.stack);
-    return;
-  }
-  console.log('Connected to MySQL as id ' + db.threadId);
+// Create tables if not exist (Run this once)
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS cities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE,
+    population INTEGER,
+    country TEXT,
+    latitude TEXT,
+    longitude TEXT
+  )`);
 });
 
 // Add City API
@@ -31,14 +36,14 @@ app.post('/cities', (req, res) => {
   const { name, population, country, latitude, longitude } = req.body;
 
   const query = 'INSERT INTO cities (name, population, country, latitude, longitude) VALUES (?, ?, ?, ?, ?)';
-  db.query(query, [name, population, country, latitude, longitude], (err, results) => {
+  db.run(query, [name, population, country, latitude, longitude], function (err) {
     if (err) {
-      if (err.code === 'ER_DUP_ENTRY') {
+      if (err.message.includes('UNIQUE constraint failed')) {
         return res.status(400).json({ message: 'City already exists' });
       }
       return res.status(500).json({ message: 'Database error', error: err });
     }
-    res.status(201).json({ message: 'City added successfully', city: { id: results.insertId, name, population, country, latitude, longitude } });
+    res.status(201).json({ message: 'City added successfully', city: { id: this.lastID, name, population, country, latitude, longitude } });
   });
 });
 
@@ -48,11 +53,11 @@ app.put('/cities/:name', (req, res) => {
   const { population, country, latitude, longitude } = req.body;
 
   const query = 'UPDATE cities SET population = ?, country = ?, latitude = ?, longitude = ? WHERE name = ?';
-  db.query(query, [population, country, latitude, longitude, name], (err, results) => {
+  db.run(query, [population, country, latitude, longitude, name], function (err) {
     if (err) {
       return res.status(500).json({ message: 'Database error', error: err });
     }
-    if (results.affectedRows === 0) {
+    if (this.changes === 0) {
       return res.status(404).json({ message: 'City not found' });
     }
     res.status(200).json({ message: 'City updated successfully', city: { name, population, country, latitude, longitude } });
@@ -64,11 +69,11 @@ app.delete('/cities/:name', (req, res) => {
   const { name } = req.params;
 
   const query = 'DELETE FROM cities WHERE name = ?';
-  db.query(query, [name], (err, results) => {
+  db.run(query, [name], function (err) {
     if (err) {
       return res.status(500).json({ message: 'Database error', error: err });
     }
-    if (results.affectedRows === 0) {
+    if (this.changes === 0) {
       return res.status(404).json({ message: 'City not found' });
     }
     res.status(200).json({ message: 'City deleted successfully' });
@@ -105,7 +110,7 @@ app.get('/cities', (req, res) => {
   query += ` LIMIT ?, ?`;
   queryParams.push(startIndex, parseInt(limit));
 
-  db.query(query, queryParams, (err, results) => {
+  db.all(query, queryParams, (err, rows) => {
     if (err) {
       return res.status(500).json({ message: 'Database error', error: err });
     }
@@ -113,7 +118,7 @@ app.get('/cities', (req, res) => {
     // Apply projection
     if (projection) {
       const projectionFields = projection.split(',').filter(Boolean);
-      results = results.map(row => {
+      rows = rows.map(row => {
         return projectionFields.reduce((obj, field) => {
           if (row[field]) obj[field] = row[field];
           return obj;
@@ -121,8 +126,13 @@ app.get('/cities', (req, res) => {
       });
     }
 
-    res.status(200).json(results);
+    res.status(200).json(rows);
   });
+});
+
+// Serve index.html from 'public' folder
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(port, () => {
